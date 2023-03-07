@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const User = require('../db/Models/User');
+const User = require('../../databases/mongodb/models/User');
 
 router.get('/', (req,res)=>{
     res.json({"success": true, "another": "Hey whatsup"})
