@@ -14,3 +14,6 @@ app.listen(process.env.PORT || 5000, () => {
   console.log("Server is listening at port 5000.");
 });
 
+
+
+//deploy works after removing some dependencies from package.json file
