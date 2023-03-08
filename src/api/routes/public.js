@@ -18,7 +18,12 @@ const { response } = require("express");
 
 // ! what if the user's activity field is not present, and we include it in the projection
 
+router.get('/anurag', (req,res)=>{
+    res.send("Anurag");
+})
+
 router.get("/certificate/:certId", async (req, res) => {
+    console.log("here");
   const { certId } = req.params;
   // console.log(certId);
   // console.log(decodeCertificateId(certId));
@@ -105,7 +110,7 @@ router.get("/certificate/:certId", async (req, res) => {
     // console.log(err);
     return res
       .status(500)
-      .json({ statusText: statusText.INTERNAL_SERVER_ERROR });
+      .json({ statusText: statusText.INTERNAL_SERVER_ERROR, error: err.message });
   }
 });
 
