@@ -4,7 +4,7 @@ const { getStorage } = require("firebase-admin/storage");
 
 // todo: can we init firebase once like mongodb
 
-const serviceAccount = require("./service_account");
+// const serviceAccount = require("./service_account");
 // console.log(serviceAccount);
 
 //Below code is causing error in AWS EB
