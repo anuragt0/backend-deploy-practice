@@ -7,7 +7,7 @@ connectToMongoDB();
 app.use(express.json());
 app.use(cors());
 
-app.use("/", require("./src/api/routes/public"));
+// app.use("/", require("./src/api/routes/public"));
 app.use("/api/auth/user", require("./src/api/routes/user"));
 
 app.listen(process.env.PORT || 5000, () => {
