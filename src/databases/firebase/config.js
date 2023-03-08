@@ -7,10 +7,10 @@ const { getStorage } = require("firebase-admin/storage");
 const serviceAccount = require("./service_account");
 // console.log(serviceAccount);
 
-// admin.initializeApp({
-//   credential: admin.credential.cert(serviceAccount),
-//   storageBucket: process.env.FIREBASE_BUCKET_NAME,
-// });
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  storageBucket: process.env.FIREBASE_BUCKET_NAME,
+});
 
 // const bucket = getStorage().bucket();
 // // console.log(bucket.name);
