@@ -38,7 +38,7 @@ const upload = require("../../config/multer_config");
 // console.log(upload);
 
 // Firebase
-// const bucket = require("../../databases/firebase/config");
+const bucket = require("../../databases/firebase/config");
 
 // ! Dont bind data to req, bind them to res, change this at all routes and middlewares reference: https://stackoverflow.com/questions/18875292/passing-variables-to-the-next-middleware-using-next-in-express-js
 // todo: only send statusText and not error field in response
