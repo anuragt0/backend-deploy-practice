@@ -7,10 +7,13 @@ connectToMongoDB();
 app.use(express.json());
 app.use(cors());
 
-// app.use("/", require("./src/api/routes/public"));
+app.use("/", require("./src/api/routes/public"));
 app.use("/api/auth/user", require("./src/api/routes/user"));
 app.use("/api/auth/admin", require("./src/api/routes/admin"));
 
+
+// This was causing error
+// const PORT = process.env.PORT ||5000;
 
 app.listen(process.env.PORT || 5000, () => {
   console.log("Server is listening at port 5000.");
