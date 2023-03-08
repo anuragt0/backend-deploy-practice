@@ -23,3 +23,4 @@ app.listen(process.env.PORT || 7000, () => {
 
 //deploy works after removing some dependencies from package.json file
 // "SHARP" is causing the error
+// "Firebase" folder is causing error

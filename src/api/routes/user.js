@@ -9,6 +9,8 @@ var jwt = require("jsonwebtoken");
 
 // My models
 const User = require("../../databases/mongodb/models/User");
+const Vertical = require("../../databases/mongodb/models/Vertical");
+const Course = require("../../databases/mongodb/models/Course");
 
 
 // My middlewares
