@@ -11,13 +11,13 @@ app.use(cors());
 //no error with below (aws eb)
 // app.use("/api/public", require("./src/api/routes/public"));
 app.use("/api/user/auth", require("./src/api/routes/user"));
-app.use("/api/admin/auth", require("./src/api/routes/admin"));
+// app.use("/api/admin/auth", require("./src/api/routes/admin"));
 
 
 // This was causing error
 // const PORT = process.env.PORT ||5000;
 
-app.listen(process.env.PORT || 7000, () => {
+app.listen(process.env.PORT || 5000, () => {
   console.log("Server is listening at port 7000.");
 });
 
