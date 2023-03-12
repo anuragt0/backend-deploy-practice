@@ -13,8 +13,11 @@ app.use(cors());
 app.get('/', (req,res)=>{
     res.status(200).send("success");
 })
+
 app.use("/api/user/auth", require("./src/api/routes/user"));
-// app.use("/api/admin/auth", require("./src/api/routes/admin"));
+app.use("/api/admin/auth", require("./src/api/routes/admin"));
+app.use("/api/public", require("./src/api/routes/public.js"));
+
 
 
 // This was causing error
