@@ -3,15 +3,12 @@ const router = express.Router();
 // require("dotenv").config();
 const bcrypt = require("bcryptjs");
 var jwt = require("jsonwebtoken");
-
-//sharp in pack.json is causing error in deployment
 // const sharp = require("sharp");
 
 // My models
 const User = require("../../databases/mongodb/models/User");
 const Vertical = require("../../databases/mongodb/models/Vertical");
 const Course = require("../../databases/mongodb/models/Course");
-
 
 // My middlewares
 const {
@@ -38,7 +35,7 @@ const upload = require("../../config/multer_config");
 // console.log(upload);
 
 // Firebase
-// const bucket = require("../../databases/firebase/config");
+const bucket = require("../../databases/firebase/config");
 
 // ! Dont bind data to req, bind them to res, change this at all routes and middlewares reference: https://stackoverflow.com/questions/18875292/passing-variables-to-the-next-middleware-using-next-in-express-js
 // todo: only send statusText and not error field in response
@@ -536,108 +533,113 @@ router.post(
   }
 );
 
-// const fs = require("fs");
+const fs = require("fs");
 
-// const { promisify } = require("util");
-// const unlinkAsync = promisify(fs.unlink);
-// router.post(
-//   "/verticals/:verticalId/courses/:courseId/units/:unitId/activity/submit",
-//   fetchPerson,
-//   isUser,
-//   upload.single("activityImg"),
-//   async (req, res) => {
-//     // todo: verify whether such an unit exists, as on android someone might request this route with any unit id
-//     // todo: if multiple submits are allowed we need to delete the older one from firebase, or we can allow atmost 2 submits per activity
-//     // we recieve req.body and req.file due to multer
-//     // console.log(req.file);
-//     const fileName = req.file.filename;
-//     const originalFilePath = req.file.path;
-//     const compressedFilePath = `uploads/compressed/${fileName}`;
+const { promisify } = require("util");
+const unlinkAsync = promisify(fs.unlink);
+router.post(
+  "/verticals/:verticalId/courses/:courseId/units/:unitId/activity/submit",
+  fetchPerson,
+  isUser,
+  upload.single("activityImg"),
+  async (req, res) => {
+    // todo: verify whether such an unit exists, as on android someone might request this route with any unit id
+    // todo: if multiple submits are allowed we need to delete the older one from firebase, or we can allow atmost 2 submits per activity
+    // we recieve req.body and req.file due to multer
+    // console.log(req.file);
+    const fileName = req.file.filename;
+    const originalFilePath = req.file.path;
+    const compressedFilePath = `uploads/compressed/${fileName}`;
 
-//     try {
-//       // compress file from 'original-file-path' to 'compressed-file-path'
-//       const compressResult = await sharp(originalFilePath)
-//         .resize(
-//           vars.imageFile.COMPRESS_IMG_WIDTH_IN_PX,
-//           vars.imageFile.COMPRESS_IMG_HEIGHT_IN_PX,
-//           {
-//             fit: "inside",
-//           }
-//         )
-//         .resize({
-//           width: vars.imageFile.COMPRESS_IMG_WIDTH_IN_PX,
-//           fit: sharp.fit.contain,
-//         })
-//         .jpeg({ quality: 90 })
-//         .toFile(compressedFilePath);
+    try {
+      // compress file from 'original-file-path' to 'compressed-file-path'
+    //   const compressResult = await sharp(originalFilePath)
+    //     .resize(
+    //       vars.imageFile.COMPRESS_IMG_WIDTH_IN_PX,
+    //       vars.imageFile.COMPRESS_IMG_HEIGHT_IN_PX,
+    //       {
+    //         fit: "inside",
+    //       }
+    //     )
+    //     .resize({
+    //       width: vars.imageFile.COMPRESS_IMG_WIDTH_IN_PX,
+    //       fit: sharp.fit.contain,
+    //     })
+    //     .jpeg({ quality: 90 })
+    //     .toFile(compressedFilePath);
 
-//       // console.log(compressResult);
+      // console.log(compressResult);
 
-//       // unlink original file
-//       await unlinkAsync(originalFilePath);
+      // unlink original file
+    //   await unlinkAsync(originalFilePath);
 
-//       // upload compressed file to firebase, with downloadToken = fileName
+      // upload compressed file to firebase, with downloadToken = fileName
 
-//       const firebaseFileDownloadToken = fileName;
-//       const metadata = {
-//         metadata: {
-//           firebaseStorageDownloadTokens: firebaseFileDownloadToken,
-//         },
-//         contentType: "image/jpeg",
-//         cacheControl: "public, max-age=31536000",
-//       };
+      const firebaseFileDownloadToken = fileName;
+      const metadata = {
+        metadata: {
+          firebaseStorageDownloadTokens: firebaseFileDownloadToken,
+        },
+        contentType: "image/jpeg",
+        cacheControl: "public, max-age=31536000",
+      };
 
-//       // Upload compressed file to the bucket
-//       const result = await bucket.upload(compressedFilePath, {
-//         gzip: true,
-//         metadata: metadata,
-//       });
+      // Upload compressed file to the bucket
+      const result = await bucket.upload(originalFilePath, {
+        gzip: true,
+        metadata: metadata,
+      });
 
-//       // console.log(result);
-//       console.log(`Uploaded to Firebase: ${firebaseFileDownloadToken}`);
+      // console.log(result);
+      console.log(`Uploaded to Firebase: ${firebaseFileDownloadToken}`);
 
-//       const bucketName = bucket.name;
-//       const firebasePublicURL = generateFirebasePublicURL(
-//         bucketName,
-//         firebaseFileDownloadToken
-//       );
-//       // unlink compressed file
-//       await unlinkAsync(compressedFilePath);
+      const bucketName = bucket.name;
+      const firebasePublicURL = generateFirebasePublicURL(
+        bucketName,
+        firebaseFileDownloadToken
+      );
+      // unlink compressed file
+    //   await unlinkAsync(compressedFilePath);
 
-//       // Save file download token to MongoDB
-//       const { verticalId, courseId, unitId } = req.params;
-//       const mongoId = req.mongoId;
-//       const activityIndex = Number(req.body.activityIndex); // req.body comes from multer
-//       // console.log(activityIndex);
+      // Save file download token to MongoDB
+      const { verticalId, courseId, unitId } = req.params;
+      const mongoId = req.mongoId;
+      const activityIndex = Number(req.body.activityIndex); // req.body comes from multer
+      // console.log(activityIndex);
 
-//       const userDoc = await User.findById(mongoId);
+      const userDoc = await User.findById(mongoId);
 
-//       // ! update activity part here
+      // ! update activity part here
 
-//       addRequiredUnitActivity(userDoc, verticalId, courseId, unitId);
+      addRequiredUnitActivity(userDoc, verticalId, courseId, unitId);
 
-//       const unitActivity =
-//         userDoc.activity[`v${verticalId}`][`c${courseId}`][`u${unitId}`];
+      const unitActivity =
+        userDoc.activity[`v${verticalId}`][`c${courseId}`][`u${unitId}`];
 
-//       unitActivity.activities[activityIndex] = firebaseFileDownloadToken;
+      unitActivity.activities[activityIndex] = firebaseFileDownloadToken;
 
-//       const updatedDoc = await User.findByIdAndUpdate(mongoId, userDoc, {
-//         new: true,
-//       });
-//       // console.log(updatedDoc.activity);
+      const updatedDoc = await User.findByIdAndUpdate(mongoId, userDoc, {
+        new: true,
+      });
+      // console.log(updatedDoc.activity);
 
-//       res.status(200).json({
-//         statusText: statusText.FILE_UPLOAD_SUCCESS,
-//       });
-//     } catch (err) {
-//       console.log(err.message);
-//       res.status(500).json({
-//         statusText: statusText.FILE_UPLOAD_FAIL,
-//       });
-//     }
-//   }
-// );
+      res.status(200).json({
+        statusText: statusText.FILE_UPLOAD_SUCCESS,
+      });
+    } catch (err) {
+      console.log(err.message);
+      res.status(500).json({
+        statusText: statusText.FILE_UPLOAD_FAIL,
+      });
+    }
+  }
+);
 
 module.exports = router;
 
-
+/*
+References:
+Sending emails:
+https://stackoverflow.com/questions/24695750/is-it-possible-to-to-send-bulk-pre-rendered-email-via-the-sendgrid-api
+https://stackoverflow.com/questions/41329056/bulk-email-sending-usiing-node-js
+*/
