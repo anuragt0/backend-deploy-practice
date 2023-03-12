@@ -10,6 +10,9 @@ app.use(cors());
 
 //no error with below (aws eb)
 // app.use("/api/public", require("./src/api/routes/public"));
+app.get('/', (req,res)=>{
+    res.status(200).send("success");
+})
 app.use("/api/user/auth", require("./src/api/routes/user"));
 // app.use("/api/admin/auth", require("./src/api/routes/admin"));
 
