@@ -1,56 +1,34 @@
 const express = require("express");
 const router = express.Router();
-// require("dotenv").config();
-const bcrypt = require("bcryptjs");
-var jwt = require("jsonwebtoken");
-// const sharp = require("sharp");
+const { default: mongoose } = require("mongoose");
+require("dotenv").config();
+
+const { parse } = require("csv-parse");
+const csvUpload = require("express-fileupload");
 
 // My models
-const User = require("../../databases/mongodb/models/User");
+const Admin = require("../../databases/mongodb/models/Admin");
 const Vertical = require("../../databases/mongodb/models/Vertical");
 const Course = require("../../databases/mongodb/models/Course");
 
-// My middlewares
-const {
-  fetchPerson,
-  isUser,
-  arePrereqSatisfied,
-  isEligibleToTakeQuiz,
-} = require("../../middlewares");
+const bcrypt = require("bcryptjs");
+var jwt = require("jsonwebtoken");
 
 // My utilities
 const statusText = require("../../utilities/status_text.js");
-const { vars } = require("../../utilities/constants.js");
-const {
-  encodeCertificateId,
-  generateFirebasePublicURL,
-  getUserActivityDefaultObj,
-  addRequiredUnitActivity,
-  isRequiredUnitActivityPresent,
-} = require("../../utilities/helper_functions.js");
+const { fetchPerson, isAdmin } = require("../../middlewares");
 
-/******************** My Configs **********************/
-// Multer
-const upload = require("../../config/multer_config");
-// console.log(upload);
-
-// Firebase
-const bucket = require("../../databases/firebase/config");
-
-// ! Dont bind data to req, bind them to res, change this at all routes and middlewares reference: https://stackoverflow.com/questions/18875292/passing-variables-to-the-next-middleware-using-next-in-express-js
-// todo: only send statusText and not error field in response
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 router.post("/dummy", async (req, res) => {
-  console.log(req);
-  console.log("skfjnksnsf");
+  //   console.log(req);
+
   try {
     const salt = await bcrypt.genSalt(10);
     const newHashedPassword = await bcrypt.hash(req.body.password, salt);
     req.body.password = newHashedPassword;
 
-    await User.create(req.body);
+    await Admin.create(req.body);
     res.status(200).json({ statusText: statusText.LOGIN_IN_SUCCESS });
   } catch (error) {
     console.log(error.message);
@@ -58,27 +36,25 @@ router.post("/dummy", async (req, res) => {
   }
 });
 
-///////////////////////////////////////////// Auth //////////////////////////////////////////////////////
+//////////////////////////////////////// LOGIN ////////////////////////////////////////////////
 
 router.post("/login", async (req, res) => {
   // todo : validation
-  // console.log(req.originalUrl);
-  // console.log(req.body);
 
-  const userId = req.body.userId;
+  const adminId = req.body.adminId;
   const enteredPassword = req.body.password;
+
   try {
     // match creds
-    const user = await User.findOne({ userId: userId });
-
-    if (!user) {
-      // wrong userId
+    const adminDoc = await Admin.findOne({ adminId: adminId });
+    if (!adminDoc) {
+      // wrong adminId
       return res
         .status(401)
         .json({ statusText: statusText.INVALID_CREDS, areCredsInvalid: true });
     }
 
-    const hashedPassword = user.password;
+    const hashedPassword = adminDoc.password;
 
     const passwordCompare = await bcrypt.compare(
       enteredPassword,
@@ -88,15 +64,16 @@ router.post("/login", async (req, res) => {
     if (!passwordCompare) {
       // wrong password
       return res
-        .status(401)
+        .status(400)
         .json({ statusText: statusText.INVALID_CREDS, areCredsInvalid: true });
     }
+    console.log(adminDoc);
 
     // generate token
     const data = {
       person: {
-        mongoId: user._id,
-        role: "user",
+        mongoId: adminDoc._id,
+        role: "admin",
       },
     };
 
@@ -106,113 +83,25 @@ router.post("/login", async (req, res) => {
       .status(200)
       .json({ statusText: statusText.LOGIN_IN_SUCCESS, token: token });
   } catch (error) {
-    // console.log(error.message);
+    console.error(error);
     res.status(500).json({ statusText: statusText.INTERNAL_SERVER_ERROR });
   }
 });
 
-router.post("/register", fetchPerson, isUser, async (req, res) => {
-  const mongoId = req.mongoId;
+/////////////////////////////////////////// All //////////////////////////////////////////
 
-  // todo: validation
-  const regForm = req.body;
-
-  try {
-    const userDoc = await User.findById(mongoId);
-
-    // ! you can also make a check for isPassReset here, but some checking is already being done at other places, to prevent someone to register before pass reset
-
-    if (userDoc.isRegistered) {
-      return res.status(403).json({
-        statusText: statusText.REGISTERED_ALREADY,
-        isRegistered: true,
-      });
-    }
-
-    await User.findByIdAndUpdate(
-      mongoId,
-      { ...regForm, isRegistered: true },
-      { overwrite: false }
-    );
-    res.status(200).json({ statusText: statusText.REGISTRATION_SUCCESS });
-  } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
-  }
-});
-
-router.post("/reset-password", fetchPerson, isUser, async (req, res) => {
-  // user is already logged in, so we dont need userId
-  // console.log(req.originalUrl);
-
-  const { currPassword, newPassword } = req.body;
-  const mongoId = req.mongoId;
-
-  try {
-    const userDoc = await User.findById(mongoId);
-
-    if (userDoc.isPassReset) {
-      return res
-        .status(403)
-        .json({ statusText: statusText.PASS_RESET_ALREADY, isPassReset: true });
-    }
-
-    const hashedPassword = userDoc.password;
-    const passwordCompare = await bcrypt.compare(currPassword, hashedPassword);
-
-    if (!passwordCompare) {
-      return res.status(401).json({
-        statusText: statusText.CURRENT_PASS_INCORRECT,
-        isCurrPasswordIncorrect: true,
-      });
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const newHashedPassword = await bcrypt.hash(newPassword, salt);
-
-    await User.findByIdAndUpdate(
-      mongoId,
-      { password: newHashedPassword, isPassReset: true },
-      { overwrite: false }
-    );
-
-    res.status(200).json({ statusText: statusText.PASS_RESET_SUCCESS });
-  } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ statusText: statusText.INTERNAL_SERVER_ERROR });
-  }
-});
-
-router.post("/verify-token", fetchPerson, isUser, async (req, res) => {
-  // console.log(req.originalUrl);
-
-  try {
-    const userDoc = await User.findById(req.mongoId);
-    return res
-      .status(200)
-      .json({ statusText: statusText.VERIFIED_TOKEN, userDoc: userDoc });
-  } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ statusText: statusText.INTERNAL_SERVER_ERROR });
-  }
-});
-
-/////////////////////////////////////// All ///////////////////////////////////////////////
-
-router.get("/verticals/all", async (req, res) => {
-  // todo: verify role, reason: a student can paste the url on browser and potray himself as an admin
+router.get("/verticals/all", fetchPerson, isAdmin, async (req, res) => {
   // console.log(req.originalUrl);
 
   try {
     const allVerticals = await Vertical.find();
     // console.log(allVerticals);
 
-    res.status(200).json({
-      statusText: statusText.SUCCESS,
-      allVerticals: allVerticals,
-    });
+    res
+      .status(200)
+      .json({ statusText: statusText.SUCCESS, allVerticals: allVerticals });
   } catch (error) {
-    console.log(error);
+    // console.log(error);
     res.status(500).json({ statusText: statusText.FAIL });
   }
 });
@@ -220,11 +109,9 @@ router.get("/verticals/all", async (req, res) => {
 router.get(
   "/verticals/:verticalId/courses/all",
   fetchPerson,
-  isUser,
-  arePrereqSatisfied,
+  isAdmin,
   async (req, res) => {
-    // console.log(req.originalUrl);
-
+    console.log(req.originalUrl);
     const { verticalId } = req.params;
 
     try {
@@ -234,17 +121,14 @@ router.get(
       const allCourses = await Course.find({
         _id: { $in: vertical.courseIds },
       });
-      // console.log(allCourses.length);
+      // console.log(allCourses);
 
-      res.status(200).json({
-        statusText: statusText.SUCCESS,
-        allCourses: allCourses,
-        userDoc: req.userDoc,
-        verticalDoc: { name: vertical.name, desc: vertical.desc },
-      });
+      res
+        .status(200)
+        .json({ statusText: statusText.SUCCESS, allCourses: allCourses });
     } catch (error) {
       // console.log(error);
-      res.status(400).json({ statusText: statusText.FAIL });
+      res.status(500).json({ statusText: statusText.FAIL });
     }
   }
 );
@@ -252,10 +136,10 @@ router.get(
 router.get(
   "/verticals/:verticalId/courses/:courseId/units/all",
   fetchPerson,
-  isUser,
-  arePrereqSatisfied,
+  isAdmin,
   async (req, res) => {
     // todo : validation
+    // console.log(req.originalUrl);
 
     const { courseId } = req.params;
 
@@ -264,268 +148,63 @@ router.get(
 
       // console.log(courseDoc);
 
-      res.status(200).json({
-        statusText: statusText.SUCCESS,
-        allUnits: courseDoc.unitArr,
-        courseDoc: { name: courseDoc.name, desc: courseDoc.desc },
-      });
+      res
+        .status(200)
+        .json({ statusText: statusText.SUCCESS, allUnits: courseDoc.unitArr });
     } catch (error) {
       console.error(error.message);
-      res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
+      res.status(500).json({ statusText: statusText.FAIL });
     }
   }
 );
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////// ADD ///////////////////////////////////////////
 
-// ! need to verify whether coursedoc exists or not
+router.post("/verticals/add", fetchPerson, async (req, res) => {
+  // todo : validation
 
-router.get(
-  "/verticals/:verticalId/courses/:courseId/units/:unitId",
+  console.log(req.body);
+
+  if (req.role != "admin") {
+    return res.status(400).json({ error: statusText.INVALID_TOKEN });
+  }
+
+  // const { name, desc, imgSrc } = req.body;
+
+  try {
+    await Vertical.create(req.body);
+    res.status(200).json({ statusText: statusText.VERTICAL_CREATE_SUCCESS });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
+  }
+});
+
+router.post(
+  "/verticals/:verticalId/courses/add",
   fetchPerson,
-  isUser,
-  arePrereqSatisfied,
   async (req, res) => {
+    if (req.role != "admin") {
+      return res.status(400).json({ error: statusText.INVALID_TOKEN });
+    }
+
     // todo : validation
-    // console.log(req.originalUrl);
-
-    const { verticalId, courseId, unitId } = req.params;
-    const mongoId = req.mongoId;
+    const { name, desc } = req.body;
+    const { verticalId } = req.params;
 
     try {
-      // find course and then the required unit from the unitArr of that course
-      const courseProj = {
-        name: 1,
-        unitArr: 1,
-      };
+      const courseDoc = await Course.create(req.body);
+      // console.log(courseDoc);
 
-      const courseDoc = await Course.findById(courseId, courseProj);
+      const verticalDoc = await Vertical.findOneAndUpdate(
+        { _id: verticalId },
+        { $push: { courseIds: courseDoc._id } },
+        { new: true }
+      );
 
-      let unit = null;
-      courseDoc.unitArr.forEach((singleUnit) => {
-        if (singleUnit._id == unitId) {
-          unit = singleUnit;
-        }
-      });
+      // console.log(verticalDoc); // new = true to return the updated doc
 
-      const userProj = {
-        fName: 1,
-        mName: 1,
-        lName: 1,
-        activity: 1,
-      };
-
-      // find user doc and decide whether user is eligible to take quiz  or get certificate
-      // cannot use middleware here because if he is not eligible then we just need to disable btn and display the page too
-
-      const userDoc = await User.findById(mongoId, userProj);
-
-      let isEligibleToTakeQuiz = false;
-      let isCertGenerated = false;
-
-      /* 
-      we dont want to put values in isEligibleToTakeQuiz, isCertGenerated by comparing with default values 
-      like scoreInPercent which is -1, because what to keep as default values might change in the future
-      */
-      if (
-        isRequiredUnitActivityPresent(userDoc, verticalId, courseId, unitId)
-      ) {
-        const unitActivity =
-          userDoc.activity[`v${verticalId}`][`c${courseId}`][`u${unitId}`];
-
-        isEligibleToTakeQuiz =
-          unitActivity.video.watchTimeInPercent >=
-          vars.activity.MIN_WATCH_TIME_IN_PERCENT;
-
-        isCertGenerated =
-          unitActivity.quiz.scoreInPercent >=
-          vars.activity.CERTIFICATE_GENERATION_CUT_OFF_IN_PERCENT;
-      } else {
-        // add default unit activity field to the user doc
-        addRequiredUnitActivity(userDoc, verticalId, courseId, unitId);
-      }
-
-      // we need courseInfo and userInfo for the "Get certificate button" which redirects on the cert's url and url contains courseId, unitId, userId
-
-      res.status(200).json({
-        statusText: statusText.SUCCESS,
-        certId: encodeCertificateId(
-          userDoc._id,
-          verticalId,
-          courseDoc._id,
-          unit._id
-        ),
-        unit: unit,
-        isEligibleToTakeQuiz: isEligibleToTakeQuiz,
-        isCertGenerated: isCertGenerated,
-      });
-    } catch (err) {
-      console.log(err);
-      res.status(500).json({ statusText: statusText.INTERNAL_SERVER_ERROR });
-    }
-  }
-);
-
-router.post(
-  "/verticals/:verticalId/courses/:courseId/units/:unitId/video/update-progress",
-  fetchPerson,
-  isUser,
-  arePrereqSatisfied,
-  async (req, res) => {
-    const { verticalId, courseId, unitId } = req.params;
-    const { vdoWatchTimeInPercent } = req.body;
-    console.log(vdoWatchTimeInPercent);
-    const mongoId = req.mongoId;
-
-    try {
-      const userDoc = await User.findById(mongoId);
-
-      addRequiredUnitActivity(userDoc, verticalId, courseId, unitId);
-
-      // ! what if we deleted just the watchtime field in mongodb doc manually
-      // userDoc.activity[`v${verticalId}`][`c${courseId}`][
-      //   `u${unitId}`
-      // ].video.watchTimeInPercent += vdoWatchTimeInPercent;
-
-      const unitActivity =
-        userDoc.activity[`v${verticalId}`][`c${courseId}`][`u${unitId}`];
-
-      unitActivity.video.watchTimeInPercent += vdoWatchTimeInPercent;
-
-      const updatedDoc = await User.findByIdAndUpdate(mongoId, userDoc, {
-        new: true,
-      });
-      // console.log(updatedDoc);
-
-      res.status(200).json({ statusText: statusText.SUCCESS });
-    } catch (err) {
-      console.log(err.message);
-      res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
-    }
-  }
-);
-
-router.get(
-  "/verticals/:verticalId/courses/:courseId/units/:unitId/quiz",
-  fetchPerson,
-  isUser,
-  arePrereqSatisfied,
-  isEligibleToTakeQuiz,
-  async (req, res) => {
-    // todo : validation, make a middleware isEligibleToTakeQuiz
-    // console.log(req.originalUrl);
-
-    const { verticalId, courseId, unitId } = req.params;
-    const mongoId = req.mongoId;
-
-    try {
-      const courseProj = {
-        _id: 0,
-        unitArr: 1,
-      };
-
-      // todo: check whether courseDoc or unitDoc exists and return 404 if not found
-      const courseDoc = await Course.findById(courseId, courseProj);
-      //   console.log(courseDoc.unitArr.length);
-
-      let unit = null;
-      courseDoc.unitArr.forEach((singleUnit) => {
-        if (singleUnit._id == unitId) {
-          unit = singleUnit;
-        }
-      });
-
-      let userProj = {
-        _id: 0,
-        activity: 1,
-      };
-
-      const userDoc = await User.findById(mongoId, userProj);
-      const unitActivity =
-        userDoc.activity[`v${verticalId}`][`c${courseId}`][`u${unitId}`];
-
-      /* no need to create any default unit activity field, as isEligibleToTakeQuiz middleware has been satisfied, 
-      this means vdo watched, this means unit activity exists already
-      */
-      res.status(200).json({
-        statusText: statusText.SUCCESS,
-        quiz: unit.quiz,
-        isEligibleToTakeQuiz: true,
-        quizScoreInPercent: unitActivity.quiz.scoreInPercent,
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
-    }
-  }
-);
-
-router.post(
-  "/verticals/:verticalId/courses/:courseId/units/:unitId/quiz/submit",
-  fetchPerson,
-  isUser,
-  arePrereqSatisfied,
-  isEligibleToTakeQuiz,
-  async (req, res) => {
-    // todo : validation, make a middleware isEligibleToTakeQuiz
-    // console.log(req.originalUrl);
-
-    const { verticalId, courseId, unitId } = req.params;
-    const { quizScoreInPercent } = req.body;
-    const mongoId = req.mongoId;
-
-    try {
-      const userDoc = await User.findById(mongoId);
-
-      /* no need to create any default unit activity field, as isEligibleToTakeQuiz middleware has been satisfied 
-      (to visit the quiz page which contains the submit button), this means vdo watched and this means 
-      unit activity exists already
-      */
-
-      // always update by creating a new doc for activity out of the previous one
-
-      // check cutoff on quiz submit only, the user can always see the quiz page (except watchtime criteria)
-      let hasPassedQuiz = false;
-      let hasPassedQuizFirstTime = false;
-      const unitActivity =
-        userDoc.activity[`v${verticalId}`][`c${courseId}`][`u${unitId}`];
-
-      if (
-        unitActivity.quiz.scoreInPercent < vars.activity.QUIZ_CUT_OFF_IN_PERCENT
-      ) {
-        // user hasn't passed quiz before, now only we can update the score
-
-        // update the score
-        unitActivity.quiz = {
-          scoreInPercent: quizScoreInPercent,
-          passingDate: new Date().toISOString(),
-        };
-
-        if (
-          quizScoreInPercent >=
-          vars.activity.CERTIFICATE_GENERATION_CUT_OFF_IN_PERCENT
-        ) {
-          hasPassedQuiz = true;
-          hasPassedQuizFirstTime = true;
-        }
-
-        const updatedDoc = await User.findByIdAndUpdate(mongoId, userDoc, {
-          new: true,
-        });
-        console.log(updatedDoc);
-      } else {
-        // user has passed quiz before
-        hasPassedQuiz = true;
-        console.log("Quiz passed already, no update in score");
-      }
-
-      console.log(hasPassedQuiz, hasPassedQuizFirstTime);
-
-      res.status(200).json({
-        statusText: statusText.SUCCESS,
-        hasPassedQuiz: hasPassedQuiz,
-        hasPassedQuizFirstTime: hasPassedQuizFirstTime,
-      });
+      res.status(200).json({ statusText: statusText.COURSE_CREATE_SUCCESS });
     } catch (error) {
       console.error(error.message);
       res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
@@ -533,113 +212,161 @@ router.post(
   }
 );
 
-const fs = require("fs");
-
-const { promisify } = require("util");
-const unlinkAsync = promisify(fs.unlink);
 router.post(
-  "/verticals/:verticalId/courses/:courseId/units/:unitId/activity/submit",
+  "/verticals/:verticalId/courses/:courseId/units/add",
   fetchPerson,
-  isUser,
-  upload.single("activityImg"),
   async (req, res) => {
-    // todo: verify whether such an unit exists, as on android someone might request this route with any unit id
-    // todo: if multiple submits are allowed we need to delete the older one from firebase, or we can allow atmost 2 submits per activity
-    // we recieve req.body and req.file due to multer
-    // console.log(req.file);
-    const fileName = req.file.filename;
-    const originalFilePath = req.file.path;
-    const compressedFilePath = `uploads/compressed/${fileName}`;
+    if (req.role != "admin") {
+      return res.status(400).json({ error: statusText.INVALID_TOKEN });
+    }
+
+    console.log(req.originalUrl);
+
+    // todo : validation
+    const unit = req.body;
+    const { courseId } = req.params;
 
     try {
-      // compress file from 'original-file-path' to 'compressed-file-path'
-    //   const compressResult = await sharp(originalFilePath)
-    //     .resize(
-    //       vars.imageFile.COMPRESS_IMG_WIDTH_IN_PX,
-    //       vars.imageFile.COMPRESS_IMG_HEIGHT_IN_PX,
-    //       {
-    //         fit: "inside",
-    //       }
-    //     )
-    //     .resize({
-    //       width: vars.imageFile.COMPRESS_IMG_WIDTH_IN_PX,
-    //       fit: sharp.fit.contain,
-    //     })
-    //     .jpeg({ quality: 90 })
-    //     .toFile(compressedFilePath);
-
-      // console.log(compressResult);
-
-      // unlink original file
-      await unlinkAsync(originalFilePath);
-
-      // upload compressed file to firebase, with downloadToken = fileName
-
-      const firebaseFileDownloadToken = fileName;
-      const metadata = {
-        metadata: {
-          firebaseStorageDownloadTokens: firebaseFileDownloadToken,
-        },
-        contentType: "image/jpeg",
-        cacheControl: "public, max-age=31536000",
-      };
-
-      // Upload compressed file to the bucket
-      const result = await bucket.upload(originalFilePath, {
-        gzip: true,
-        metadata: metadata,
-      });
-
-      // console.log(result);
-      console.log(`Uploaded to Firebase: ${firebaseFileDownloadToken}`);
-
-      const bucketName = bucket.name;
-      const firebasePublicURL = generateFirebasePublicURL(
-        bucketName,
-        firebaseFileDownloadToken
+      const courseDoc = await Course.findOneAndUpdate(
+        { _id: courseId },
+        { $push: { unitArr: unit } },
+        { new: true }
       );
-      // unlink compressed file
-      await unlinkAsync(compressedFilePath);
 
-      // Save file download token to MongoDB
-      const { verticalId, courseId, unitId } = req.params;
-      const mongoId = req.mongoId;
-      const activityIndex = Number(req.body.activityIndex); // req.body comes from multer
-      // console.log(activityIndex);
+      // console.log(courseDoc); // new = true to return the updated doc
 
-      const userDoc = await User.findById(mongoId);
-
-      // ! update activity part here
-
-      addRequiredUnitActivity(userDoc, verticalId, courseId, unitId);
-
-      const unitActivity =
-        userDoc.activity[`v${verticalId}`][`c${courseId}`][`u${unitId}`];
-
-      unitActivity.activities[activityIndex] = firebaseFileDownloadToken;
-
-      const updatedDoc = await User.findByIdAndUpdate(mongoId, userDoc, {
-        new: true,
-      });
-      // console.log(updatedDoc.activity);
-
-      res.status(200).json({
-        statusText: statusText.FILE_UPLOAD_SUCCESS,
-      });
-    } catch (err) {
-      console.log(err.message);
-      res.status(500).json({
-        statusText: statusText.FILE_UPLOAD_FAIL,
-      });
+      res.status(200).json({ statusText: statusText.UNIT_ADD_SUCCESS });
+    } catch (error) {
+      console.error(error.message);
+      res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
     }
   }
 );
+
+//////////////////////////////////////// DELETE //////////////////////////////////////////
+
+router.delete(
+  "/verticals/:verticalId/delete",
+  fetchPerson,
+  async (req, res) => {
+    if (req.role != "admin") {
+      return res.status(400).json({ error: statusText.INVALID_TOKEN });
+    }
+
+    // todo : validation
+    const { verticalId } = req.params;
+
+    try {
+      const verticalDoc = await Vertical.findByIdAndDelete(verticalId); // returns the doc just before deletion
+      // console.log(verticalDoc);
+
+      await Course.deleteMany({
+        _id: { $in: verticalDoc.courseIds },
+      });
+
+      res.status(200).json({ statusText: statusText.VERTICAL_DELETE_SUCCESS });
+    } catch (error) {
+      console.error(error.message);
+      res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
+    }
+  }
+);
+
+router.delete(
+  "/verticals/:verticalId/courses/:courseId/delete",
+  fetchPerson,
+  async (req, res) => {
+    if (req.role != "admin") {
+      return res.status(400).json({ error: statusText.INVALID_TOKEN });
+    }
+
+    // todo : validation
+    const { verticalId, courseId } = req.params;
+    console.log(courseId);
+    const objectCourseId = mongoose.Types.ObjectId(courseId); // imp to convert to string to objectId
+    console.log(objectCourseId);
+
+    try {
+      const courseDoc = await Course.findByIdAndDelete(courseId);
+      // console.log(courseDoc);
+
+      const verticalDoc = await Vertical.updateOne(
+        { _id: verticalId },
+        {
+          $pull: {
+            courseIds: { $in: [objectCourseId] },
+          },
+        }
+      );
+
+      console.log(verticalDoc);
+
+      res.status(200).json({ statusText: statusText.COURSE_DELETE_SUCCESS });
+    } catch (error) {
+      console.error(error.message);
+      res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
+    }
+  }
+);
+
+router.delete(
+  "/verticals/:verticalId/courses/:courseId/units/:unitId/delete",
+  fetchPerson,
+  async (req, res) => {
+    if (req.role != "admin") {
+      return res.status(400).json({ error: statusText.INVALID_TOKEN });
+    }
+
+    // todo : validation
+    const { verticalId, courseId, unitId } = req.params;
+    const objectUnitId = mongoose.Types.ObjectId(unitId);
+
+    try {
+      const courseDoc = await Course.updateOne(
+        { _id: courseId },
+        {
+          $pull: {
+            unitArr: { _id: objectUnitId },
+          },
+        }
+      );
+
+      console.log(courseDoc);
+
+      res.status(200).json({ statusText: statusText.UNIT_DELETE_SUCCESS });
+    } catch (error) {
+      console.error(error.message);
+      res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
+    }
+  }
+);
+
+router.post("/add-users", csvUpload(), async (req, res) => {
+  console.log(req.originalUrl);
+  // ! todo: SEND MAILS
+
+  try {
+    const input = req.files.userCreds.data; // csvUploads (in index.js) file adds file to req.files
+    const options = {};
+    parse(input, options, (err, records) => {
+      if (err) {
+        console.log(err);
+        res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
+      } else {
+        console.log(records);
+
+        try {
+          // create users and send bulk emails
+        } catch (err) {
+          console.log(err);
+        }
+        res.status(200).json({ statusText: statusText.SUCCESS });
+      }
+    });
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).json({ error: statusText.INTERNAL_SERVER_ERROR });
+  }
+});
 
 module.exports = router;
-
-/*
-References:
-Sending emails:
-https://stackoverflow.com/questions/24695750/is-it-possible-to-to-send-bulk-pre-rendered-email-via-the-sendgrid-api
-https://stackoverflow.com/questions/41329056/bulk-email-sending-usiing-node-js
-*/
